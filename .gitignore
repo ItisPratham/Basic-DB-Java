@@ -29,3 +29,11 @@
 # OS files
 .DS_Store
 Thumbs.db
+
+# log and temp files
+*.log
+*.tmp
+*.bak
+*.swp
+
+/storage_files/
