@@ -1,8 +1,9 @@
 package org.example;
 
 import java.io.File;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -11,20 +12,17 @@ import java.util.Scanner;
 public class Main {
     public static void main(String[] args) {
         // need to create a file system
-        final int MAX_SIZE = 4096;
+        final int MAX_SIZE = 10; // temporary reducing it for testing -> change it to 4096 aka 4KB
+        final String EXTENSION = ".txt";
         List<File> fileList = new ArrayList<>();
         Scanner sc = new Scanner(System.in);
 
         File dir = new File("storage_files");
-        if (!dir.exists()) {
-            dir.mkdir();
-        }
+        if (!dir.exists()) dir.mkdir();
 
         if (dir.listFiles() != null) {
             for (File f : Objects.requireNonNull(dir.listFiles())) {
-                if (f.isFile()) {
-                    fileList.add(f);
-                }
+                if (f.isFile()) fileList.add(f);
             }
         }
 
@@ -41,53 +39,60 @@ public class Main {
             int choice = sc.nextInt();
 
             switch (choice){
-                case 1:
+                case 1: // CREATE
                     sc.nextLine();
                     System.out.println("Enter the name of the file to be created: ");
-                    String fileName = sc.nextLine();
+                    String baseFileName = sc.nextLine();
 
-                    File newFile = new File(dir, fileName);
+                    boolean fileExists = fileList.stream().anyMatch(f -> f.getName().startsWith(baseFileName));
 
-                    if(newFile.exists()){
-                        System.out.println("File already exists in the directory.");
-                    }
-                    else{
-                        try {
-                            if (newFile.createNewFile()) {
-                                fileList.add(newFile);
-                                System.out.println("File created successfully");
-                                System.out.println("Enter your paragraph (press Enter twice to finish):");
+                    if (fileExists) System.out.println("File already exists in the directory.");
+                    else {
+                        StringBuilder paragraph = new StringBuilder();
+                        String line;
+                        System.out.println("Enter your paragraph (press Enter twice to finish):");
 
-                                StringBuilder paragraph = new StringBuilder();
-                                String line;
-
-                                while (true) {
-                                    line = sc.nextLine();
-                                    if (line.isEmpty()) {
-                                        break;
-                                    }
-                                    paragraph.append(line).append("\n");
-                                }
-                                try (FileWriter writer = new FileWriter(newFile)) {
-                                    writer.write(paragraph.toString());
-                                    System.out.println("Paragraph written to file successfully.");
-                                }
+                        while (true) {
+                            line = sc.nextLine();
+                            if (line.isEmpty()) {
+                                break;
                             }
-                            else {
-                                System.out.println("Failed to create the file. Please try again..");
-                            }
-                        } catch (IOException e) {
-                            System.out.println("An error has occurred while creating this file.");
+                            paragraph.append(line).append("\n");
                         }
+
+                        byte[] dataBytes = paragraph.toString().getBytes(StandardCharsets.UTF_8);
+                        int totalSize = dataBytes.length;
+                        int fileCount = 0;
+                        int offset = 0;
+
+                        while (offset < totalSize) {
+                            int chunkSize = Math.min(MAX_SIZE, totalSize - offset);
+                            String fileName;
+
+                            if (fileCount == 0 && totalSize <= MAX_SIZE) fileName = baseFileName + EXTENSION;
+                            else fileName = baseFileName + "_" + fileCount + EXTENSION;
+
+                            File partFile = new File(dir, fileName);
+                            try (FileOutputStream fos = new FileOutputStream(partFile)) {
+                                fos.write(dataBytes, offset, chunkSize);
+                                System.out.println("File created: " + partFile.getName() + " of size: " + chunkSize + " bytes");
+                                fileList.add(partFile);
+                            } catch (IOException E) {
+                                System.out.println("An error has occurred while creating this file.");
+                            }
+                            offset += chunkSize;
+                            fileCount++;
+                        }
+                        if (fileCount > 1) System.out.println("Content split into " + fileCount + " files.");
                     }
                     break;
-                case 2:
+                case 2: // READ
                     break;
-                case 3:
+                case 3: // UPDATE
                     break;
-                case 4:
+                case 4: // DELETE
                     break;
-                case 5:
+                case 5: // EXIT
                     System.out.println("Exiting..");
                     flag = false;
                     break;
