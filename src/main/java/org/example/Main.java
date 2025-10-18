@@ -1,114 +1,127 @@
 package org.example;
 
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Scanner;
+import java.util.*;
 
 public class Main {
-    public static void main(String[] args) {
-        // need to create a file system
-        final int MAX_SIZE = 10; // temporary reducing it for testing -> change it to 4096 aka 4KB
-        final String EXTENSION = ".txt";
-        List<File> fileList = new ArrayList<>();
-        Scanner sc = new Scanner(System.in);
 
-        File dir = new File("storage_files");
+    public static void main(String[] args) throws IOException {
+        DB db = new DB();
+
+        db.createTable("accounts", Account.class);
+
+        Table<Account> accountTable = db.getTable("accounts", Account.class);
+
+        Account acc = new Account(100,"Nidip", 1000.0);
+        accountTable.insert(acc);
+
+    }
+
+    /*private static final int MAX_SIZE = 4096; // 4KB page size in bytes
+    private static final String EXTENSION = ".dat";
+    private static final String baseFileName = "DemoFile";
+    private static final String WAL_FILE = "wal.log";
+    private static final File dir = new File("storage_files");
+
+    private static final Map<Integer, String> pageCache = new HashMap<>();
+    private static int pageCount = 0;
+
+    public static void main(String[] args) throws IOException {
         if (!dir.exists()) dir.mkdir();
 
-        if (dir.listFiles() != null) {
-            for (File f : Objects.requireNonNull(dir.listFiles())) {
-                if (f.isFile()) fileList.add(f);
-            }
+        String paragraph = "An encyclopedia is a reference work or compendium providing summaries of knowledge, either general or special, in a particular field or discipline. Encyclopedias are divided into articles or entries that are arranged alphabetically by article name or by thematic categories, or else are hyperlinked and searchable.[4] Encyclopedia entries are longer and more detailed than those in most dictionaries. Generally speaking, encyclopedia articles focus on factual information concerning the subject named in the article's title; this is unlike dictionary entries, which focus on linguistic information about words, such as their etymology, meaning, pronunciation, use, and grammatical forms.\n" +
+                "\n" +
+                "Encyclopedias have existed for around 2,000 years and have evolved considerably during that time as regards language (written in a major international or a vernacular language), size (few or many volumes), intent (presentation of a global or a limited range of knowledge), cultural perspective (authoritative, ideological, didactic, utilitarian), authorship (qualifications, style), readership (education level, background, interests, capabilities), and the technologies available for their production and distribution (hand-written manuscripts, small or large print runs, Internet). As a valued source of reliable information compiled by experts, printed versions found a prominent place in libraries, schools and other educational institutions.\n" +
+                "\n" +
+                "In the 21st century, the appearance of digital and open-source versions such as Wikipedia (together with the wiki website format) has vastly expanded the accessibility, authorship, readership, and variety of encyclopedia entries.";
+
+        writeToDB(paragraph);
+
+        String result = readFromDB();
+        System.out.println("DB Content:\n" + result);
+
+    }
+
+    private static void writeToDB(String paragraph) throws IOException {
+        // Step 1: Append to WAL
+        try (FileOutputStream walStream = new FileOutputStream(WAL_FILE, true)) {
+            walStream.write(paragraph.getBytes(StandardCharsets.UTF_8));
         }
 
-        boolean flag = true;
+        // Step 2: Chunk paragraph into pages (≤4KB per UTF-8 encoded chunk)
+        int offset = 0;
+        while (offset < paragraph.length()) {
+            StringBuilder chunkBuilder = new StringBuilder();
+            int currentSize = 0;
 
-        while (flag) {
-            System.out.println("FILE SYSTEM - CRUD Operations");
-            System.out.println("1: Create new file");
-            System.out.println("2: Read an existing file");
-            System.out.println("3: Update contents of an existing file");
-            System.out.println("4: Delete a file");
-            System.out.println("5: Exit\n\n");
+            while (offset < paragraph.length()) {
+                char ch = paragraph.charAt(offset);
+                byte[] charBytes = String.valueOf(ch).getBytes(StandardCharsets.UTF_8);
 
-            int choice = sc.nextInt();
+                if (currentSize + charBytes.length > MAX_SIZE) break;
 
-            switch (choice){
-                case 1: // CREATE
-                    sc.nextLine();
-                    System.out.println("Enter the name of the file to be created: ");
-                    String baseFileName = sc.nextLine();
+                chunkBuilder.append(ch);
+                currentSize += charBytes.length;
+                offset++;
+            }
 
-                    boolean fileExists = fileList.stream().anyMatch(f -> f.getName().startsWith(baseFileName));
+            String pageContent = chunkBuilder.toString();
 
-                    if (fileExists) System.out.println("File already exists in the directory.");
-                    else {
-                        StringBuilder paragraph = new StringBuilder();
+            // Check if already in memory
+            if (!pageCache.containsKey(pageCount)) {
+                File pageFile = new File(dir, baseFileName + "_" + pageCount + EXTENSION);
+                if (pageFile.exists()) {
+                    // Load from disk if already exists
+                    try (BufferedReader reader = new BufferedReader(new FileReader(pageFile))) {
+                        StringBuilder existing = new StringBuilder();
                         String line;
-                        System.out.println("Enter your paragraph (press Enter twice to finish):");
-
-                        while (true) {
-                            line = sc.nextLine();
-                            if (line.isEmpty()) {
-                                break;
-                            }
-                            paragraph.append(line).append("\n");
+                        while ((line = reader.readLine()) != null) {
+                            existing.append(line).append("\n");
                         }
-
-                        byte[] dataBytes = paragraph.toString().getBytes(StandardCharsets.UTF_8);
-                        int totalSize = dataBytes.length;
-                        int fileCount = 0;
-                        int offset = 0;
-
-                        while (offset < totalSize) {
-                            int chunkSize = Math.min(MAX_SIZE, totalSize - offset);
-                            String fileName;
-
-                            if (fileCount == 0 && totalSize <= MAX_SIZE) fileName = baseFileName + EXTENSION;
-                            else fileName = baseFileName + "_" + fileCount + EXTENSION;
-
-                            File partFile = new File(dir, fileName);
-                            try (FileOutputStream fos = new FileOutputStream(partFile)) {
-                                fos.write(dataBytes, offset, chunkSize);
-                                System.out.println("File created: " + partFile.getName() + " of size: " + chunkSize + " bytes");
-                                fileList.add(partFile);
-                            } catch (IOException E) {
-                                System.out.println("An error has occurred while creating this file.");
-                            }
-                            offset += chunkSize;
-                            fileCount++;
-                        }
-                        if (fileCount > 1) System.out.println("Content split into " + fileCount + " files.");
+                        pageCache.put(pageCount, existing.toString());
                     }
-                    break;
-                case 2: // READ
-                    break;
-                case 3: // UPDATE
-                    break;
-                case 4: // DELETE
-                    break;
-                case 5: // EXIT
-                    System.out.println("Exiting..");
-                    flag = false;
-                    break;
-                default:
-                    System.out.println("Enter valid INPUT");
-                    break;
-            }
-            System.out.println("\n");
-            try {
-                Thread.sleep(2000);
-            } catch (InterruptedException e) {
-                System.out.println("Thread interrupted");
+                } else {
+                    // Write new page
+                    pageCache.put(pageCount, pageContent);
+                    try (BufferedWriter writer = new BufferedWriter(new FileWriter(pageFile))) {
+                        writer.write(pageContent);
+                        System.out.println("Page created: " + pageFile.getName() +
+                                " | Size: " + currentSize + " bytes");
+                    }
+                }
             }
 
+            pageCount++;
         }
     }
 
+    private static String readFromDB() throws IOException {
+        StringBuilder result = new StringBuilder();
 
+        for (int i = 0; ; i++) {
+            String pageData;
+
+            if (pageCache.containsKey(i)) {
+                pageData = pageCache.get(i);
+            } else {
+                File pageFile = new File(dir, baseFileName + "_" + i + EXTENSION);
+                if (!pageFile.exists()) break;
+
+                try (BufferedReader reader = new BufferedReader(new FileReader(pageFile))) {
+                    StringBuilder builder = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        builder.append(line).append("\n");
+                    }
+                    pageData = builder.toString();
+                    pageCache.put(i, pageData); // cache it
+                }
+            }
+
+            result.append(pageData);
+        }
+
+        return result.toString();
+    } */
 }

@@ -37,3 +37,4 @@ Thumbs.db
 *.swp
 
 /storage_files/
+/accounts.wal
